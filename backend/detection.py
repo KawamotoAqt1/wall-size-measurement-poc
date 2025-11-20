@@ -5,47 +5,65 @@
 
 from PIL import Image
 from typing import Optional, Dict, Any
+from ultralytics  import YOLO
+import numpy as np
 
+
+YOLO_MODEL = YOLO("best.pt")
+
+def yolo_detect_reference_object(image: Image.Image) -> Optional[Dict[str, Any]]:
+    """
+    YOLOモデルを使って基準物（postbox）を検出して返す。
+
+    Args:
+        image: PIL Image
+
+    Returns:
+        {
+            "type": "postbox",
+            "x": int,
+            "y": int,
+            "width": int,
+            "height": int,
+            "confidence": float
+        }
+        または None
+    """
+    print("In yolo method ", image.size)
+
+    # Ensure 3-channel RGB
+    image = image.convert("RGB")
+
+    # PIL → numpy
+    img_np = np.array(image)
+
+    # YOLO推論
+    results = YOLO_MODEL.predict(img_np, verbose=False, conf=0.25)
+
+    if len(results) == 0 or len(results[0].boxes) == 0:
+        return None
+
+    # 最も信頼度の高い1つを採用
+    box = results[0].boxes[0]
+
+    # xyxy形式で取り出す
+    x1, y1, x2, y2 = box.xyxy[0].tolist()
+    conf = float(box.conf[0].item())
+
+    width = int(x2 - x1)
+    height = int(y2 - y1)
+
+    return {
+        "type": "postbox",   # ← あなたのクラス名（1クラス学習なら固定でOK）
+        "x": int(x1),
+        "y": int(y1),
+        "width": width,
+        "height": height,
+        "confidence": conf
+    }
 
 def mock_detect_reference_object(image: Image.Image) -> Optional[Dict[str, Any]]:
-    """
-    モック実装: 基準物を検出する関数
-    
-    実際の実装では、この関数内でYOLOモデルを実行して
-    ポスト・ドアホン・ブロックを検出する。
-    
-    Args:
-        image: PIL Image オブジェクト
-        
-    Returns:
-        検出された場合は基準物情報の辞書、検出されない場合はNone
-        辞書の形式:
-        {
-            "type": "postbox" | "intercom" | "block",
-            "x": int,  # bounding boxの左上x座標（px）
-            "y": int,  # bounding boxの左上y座標（px）
-            "width": int,  # bounding boxの幅（px）
-            "height": int,  # bounding boxの高さ（px）
-            "confidence": float  # 信頼度（0.0-1.0）
-        }
-    """
-    # モック実装: 画像の中央付近に固定のpostboxを返す
-    img_width, img_height = image.size
-    
-    # 画像の中央付近に配置（画像サイズの20-40%の位置）
-    bbox_x = int(img_width * 0.2)
-    bbox_y = int(img_height * 0.3)
-    bbox_width = int(img_width * 0.2)  # 画像幅の20%
-    bbox_height = int(img_height * 0.15)  # 画像高さの15%
-    
-    return {
-        "type": "postbox",
-        "x": bbox_x,
-        "y": bbox_y,
-        "width": bbox_width,
-        "height": bbox_height,
-        "confidence": 0.94
-    }
+    return yolo_detect_reference_object(image)
 
 
 # 後からYOLO実装に差し替える場合は、この関数を実装して
