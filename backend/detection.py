@@ -10,6 +10,7 @@ import numpy as np
 
 
 YOLO_MODEL = YOLO("best.pt")
+classes = ["POST","INTERCOM"]
 
 def yolo_detect_reference_object(image: Image.Image) -> Optional[Dict[str, Any]]:
     """
@@ -29,7 +30,6 @@ def yolo_detect_reference_object(image: Image.Image) -> Optional[Dict[str, Any]]
         }
         または None
     """
-    print("In yolo method ", image.size)
 
     # Ensure 3-channel RGB
     image = image.convert("RGB")
@@ -45,7 +45,7 @@ def yolo_detect_reference_object(image: Image.Image) -> Optional[Dict[str, Any]]
 
     # 最も信頼度の高い1つを採用
     box = results[0].boxes[0]
-
+    classType = classes[int(results[0].boxes.cls)]
     # xyxy形式で取り出す
     x1, y1, x2, y2 = box.xyxy[0].tolist()
     conf = float(box.conf[0].item())
@@ -54,7 +54,7 @@ def yolo_detect_reference_object(image: Image.Image) -> Optional[Dict[str, Any]]
     height = int(y2 - y1)
 
     return {
-        "type": "postbox",   # ← あなたのクラス名（1クラス学習なら固定でOK）
+        "type": classType,   # ← あなたのクラス名（1クラス学習なら固定でOK）
         "x": int(x1),
         "y": int(y1),
         "width": width,
