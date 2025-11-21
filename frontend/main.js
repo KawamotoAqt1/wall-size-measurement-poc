@@ -33,18 +33,40 @@ const state = {
 };
 
 // 基準物のデフォルトサイズ（mm）
+// バックエンドと統一して大文字固定
 const DEFAULT_SIZES = {
-    postbox: { width: 340, height: 150 },
-    intercom: { width: 90, height: 140 },
-    block: { width: 390, height: 190 }
+    POST: { width: 340, height: 150 },
+    INTERCOM: { width: 115, height: 150 },
+    BLOCK: { width: 390, height: 190 }
 };
 
 // 基準物タイプの日本語表示名
+// バックエンドと統一して大文字固定
 const TYPE_NAMES = {
-    postbox: "ポスト",
-    intercom: "ドアホン",
-    block: "ブロック"
+    POST: "ポスト",
+    INTERCOM: "インターフォン",
+    BLOCK: "ブロック"
 };
+
+/**
+ * タイプから日本語表示名を取得
+ * @param {string} type - バックエンドが返すタイプ（例: "POST", "INTERCOM"）
+ * @returns {string} - 日本語表示名
+ */
+function getTypeDisplayName(type) {
+    // クラス名のマッピング（モデルのクラス名を標準名に変換）
+    const classNameMapping = {
+        "PO": "POST",
+        "POST": "POST",
+        "INTERCOM": "INTERCOM",
+        "INTER": "INTERCOM",
+        "IC": "INTERCOM"
+    };
+    
+    // マッピングを適用
+    const mappedType = classNameMapping[type] || type;
+    return TYPE_NAMES[mappedType] || mappedType;
+}
 
 // APIのベースURL
 const API_BASE_URL = "http://127.0.0.1:8000";
@@ -150,7 +172,6 @@ elements.captureBtn.addEventListener("click", capturePhoto);
 // ==================== 状態遷移関数 ====================
 
 function changeState(newState) {
-    console.log(`状態遷移: ${appState} -> ${newState}`);
     appState = newState;
     
     // 各状態に応じてUIを更新
@@ -247,6 +268,17 @@ async function analyzeImage() {
         
         if (data.reference_object) {
             // 基準物が検出された
+            // クラス名のマッピングを適用（バックエンドから返された値を正規化）
+            const classNameMapping = {
+                "POST": "POST",
+                "INTERCOM": "INTERCOM",
+            };
+            const originalType = data.reference_object.type;
+            const mappedType = classNameMapping[originalType] || originalType;
+            if (originalType !== mappedType) {
+                data.reference_object.type = mappedType;
+            }
+            
             state.referenceObject = data.reference_object;
             drawReferenceBox(data.reference_object);
             changeState("confirm_reference");
@@ -287,7 +319,7 @@ function drawReferenceBox(refObj) {
     // ラベルを描画
     state.ctx.fillStyle = "#e74c3c";
     state.ctx.font = "bold 16px Arial";
-    const label = TYPE_NAMES[refObj.type] || refObj.type;
+    const label = getTypeDisplayName(refObj.type);
     state.ctx.fillText(label, x, y - 5);
 }
 
@@ -374,10 +406,21 @@ function setupReferenceSizeInputs() {
     if (!state.referenceObject) return;
     
     const type = state.referenceObject.type;
-    const defaults = DEFAULT_SIZES[type] || { width: 100, height: 100 };
+    // クラス名のマッピング（モデルのクラス名を標準名に変換）
+    const classNameMapping = {
+        "PO": "POST",
+        "POST": "POST",
+        "INTERCOM": "INTERCOM",
+        "INTER": "INTERCOM",
+        "IC": "INTERCOM"
+    };
+    const mappedType = classNameMapping[type] || type;
+    // マッピング後のタイプを使用
+    const defaults = DEFAULT_SIZES[mappedType] || { width: 100, height: 100 };
     
     // タイプ表示
-    elements.referenceTypeDisplay.textContent = TYPE_NAMES[type] || type;
+    const displayName = getTypeDisplayName(type);
+    elements.referenceTypeDisplay.textContent = displayName;
     
     // デフォルト値を設定
     elements.referenceWidthInput.value = defaults.width;
@@ -406,9 +449,6 @@ function confirmReferenceSize() {
     // ref_width_mm / bbox_width_px = mm_per_px
     const bboxWidthPx = state.referenceObject.width;
     state.mmPerPx = width / bboxWidthPx;
-    
-    console.log(`スケール係数: ${state.mmPerPx} mm/px`);
-    console.log(`基準物: ${width}mm x ${height}mm (画像上: ${bboxWidthPx}px)`);
     
     // 矩形選択モードに遷移
     changeState("select_rect");
@@ -441,8 +481,6 @@ function calculateAndDisplayResult() {
     // アスペクト比を計算
     const aspectRatio = rectWidthMm / rectHeightMm;
     elements.resultAspectRatio.textContent = `${Math.round(aspectRatio * 10) / 10} : 1.0`;
-    
-    console.log(`測定結果: ${rectWidthMm.toFixed(1)}mm x ${rectHeightMm.toFixed(1)}mm`);
 }
 
 // ==================== 接続テスト関数 ====================
@@ -479,7 +517,6 @@ async function testConnection() {
         
         updateConnectionStatus("connected", "バックエンドに接続済み", info);
         
-        console.log("接続テスト成功:", data);
         return true;
         
     } catch (error) {
@@ -562,8 +599,6 @@ async function openCamera() {
         // 撮影ボタンを有効化
         elements.captureBtn.disabled = false;
         
-        console.log("カメラにアクセスしました");
-        
     } catch (error) {
         console.error("カメラアクセスエラー:", error);
         
@@ -601,8 +636,6 @@ function closeCamera() {
     
     // モーダルを非表示
     elements.cameraModal.style.display = "none";
-    
-    console.log("カメラを閉じました");
 }
 
 /**
@@ -642,8 +675,6 @@ function capturePhoto() {
             
             // カメラを閉じる
             closeCamera();
-            
-            console.log("写真を撮影しました:", file.name);
         }, "image/jpeg", 0.95);  // JPEG形式、品質95%
         
     } catch (error) {
@@ -670,15 +701,11 @@ function updateStatus(elementId, message, type = "info") {
 }
 
 function updateConfirmMessage(refObj) {
-    const typeName = TYPE_NAMES[refObj.type] || refObj.type;
+    const typeName = getTypeDisplayName(refObj.type);
     elements.confirmMessage.textContent = `この枠は${typeName}の位置で正しいですか？`;
 }
 
 // ==================== 初期化 ====================
-
-console.log("寸法測定PoC - 初期化完了");
-console.log("状態:", appState);
-console.log("API URL:", API_BASE_URL);
 
 // ページ読み込み時に接続テストを実行
 window.addEventListener("DOMContentLoaded", () => {

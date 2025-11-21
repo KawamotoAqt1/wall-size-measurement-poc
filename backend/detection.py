@@ -10,6 +10,34 @@ import numpy as np
 
 
 YOLO_MODEL = YOLO("best.pt")
+# YOLOモデルから実際のクラス名を取得
+if hasattr(YOLO_MODEL, 'names') and YOLO_MODEL.names:
+    # モデルのクラス名をそのまま使用（モデルのクラス順序に合わせる）
+    model_classes = YOLO_MODEL.names
+    
+    # クラス名のマッピング（モデルのクラス名を標準名に変換）
+    class_name_mapping = {
+        "PO": "POST",
+        "POST": "POST",
+        "INTERCOM": "INTERCOM",
+        "INTER": "INTERCOM",
+        "IC": "INTERCOM"
+    }
+    
+    # YOLOモデルのnamesは辞書形式 {0: "class0", 1: "class1"} の可能性がある
+    if isinstance(model_classes, dict):
+        # 辞書の場合、クラスID順にソートしてリストを作成
+        max_class_id = max(model_classes.keys()) if model_classes else -1
+        raw_classes = [model_classes.get(i, f"CLASS_{i}").upper() for i in range(max_class_id + 1)]
+    else:
+        # リストの場合
+        raw_classes = [model_classes[i].upper() for i in range(len(model_classes))]
+    
+    # クラス名をマッピングして標準名に変換
+    classes = [class_name_mapping.get(cls, cls) for cls in raw_classes]
+else:
+    # フォールバック: 手動定義
+    classes = ["POST","INTERCOM"]
 
 def yolo_detect_reference_object(image: Image.Image) -> Optional[Dict[str, Any]]:
     """
@@ -29,7 +57,6 @@ def yolo_detect_reference_object(image: Image.Image) -> Optional[Dict[str, Any]]
         }
         または None
     """
-    print("In yolo method ", image.size)
 
     # Ensure 3-channel RGB
     image = image.convert("RGB")
@@ -37,24 +64,35 @@ def yolo_detect_reference_object(image: Image.Image) -> Optional[Dict[str, Any]]
     # PIL → numpy
     img_np = np.array(image)
 
-    # YOLO推論
-    results = YOLO_MODEL.predict(img_np, verbose=False, conf=0.25)
+    # YOLO推論（信頼度の閾値を上げる）
+    results = YOLO_MODEL.predict(img_np, verbose=False, conf=0.5)
 
     if len(results) == 0 or len(results[0].boxes) == 0:
         return None
 
     # 最も信頼度の高い1つを採用
     box = results[0].boxes[0]
-
+    # クラスIDを取得（results[0].boxes.clsは全ボックスのクラスIDを含むテンソル）
+    # 最初のボックスのクラスIDを取得
+    classId = int(results[0].boxes.cls[0].item())
     # xyxy形式で取り出す
     x1, y1, x2, y2 = box.xyxy[0].tolist()
     conf = float(box.conf[0].item())
+    
+    rawClassType = classes[classId] if 0 <= classId < len(classes) else "UNKNOWN"
+    
+    # クラス名のマッピング（念のため再度適用）
+    class_name_mapping = {
+        "POST": "POST",
+        "INTERCOM": "INTERCOM",
+    }
+    classType = class_name_mapping.get(rawClassType, rawClassType)
 
     width = int(x2 - x1)
     height = int(y2 - y1)
 
     return {
-        "type": "postbox",   # ← あなたのクラス名（1クラス学習なら固定でOK）
+        "type": classType,   # ← あなたのクラス名（1クラス学習なら固定でOK）
         "x": int(x1),
         "y": int(y1),
         "width": width,
